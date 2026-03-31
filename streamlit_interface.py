@@ -14,4 +14,4 @@ The language in these documents are confusing and difficult to understand. Inste
 '''
 st.markdown(multi)
 file_upload = st.file_uploader("Upload your file here: ", type="pdf")
-file_paste = st.text_input("Or, paste the contents of the document here: ")
+file_paste = st.text_input("Or, paste the URL: ")
