@@ -3,14 +3,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from typing import List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
+import tiktoken
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.documents import Document
 
-# Define Output Schemas for JsonOutputParser
+
 class SummaryOutput(BaseModel):
     service_introduction: str = Field(description="What is this service? Main functions.")
     user_rights: str = Field(description="What rights do users have? What are the user's obligations? Prohibited behaviors.")
@@ -20,37 +20,152 @@ class SummaryOutput(BaseModel):
     dispute_resolution: str = Field(description="How are disputes resolved (arbitration, litigation, etc.)?")
     other_important_terms: str = Field(description="Such as automatic renewal, service changes, termination conditions.")
 
+
 class RiskHighlightOutput(BaseModel):
-    risks: List[str] = Field(description="List of specific, actionable risks or unfair clauses found in the Terms of Service. Be specific, highlight hidden fees, aggressive arbitration, or invasive data collection.")
+    risks: List[str] = Field(
+        description="List of specific, actionable risks or unfair clauses found in the Terms of Service."
+    )
+
+
+# Count tokens for a given text string so we can keep each request under the model limit.
+def count_tokens(text: str, model_name: str = "gpt-4o-mini") -> int:
+    try:
+        encoding = tiktoken.encoding_for_model(model_name)
+    except Exception:
+        encoding = tiktoken.get_encoding("cl100k_base")
+    return len(encoding.encode(text))
+
+
+# Batch the extracted chunks into smaller groups based on a token threshold.
+# This prevents the full request body from exceeding the GitHub Models 8k limit.
+# We use 5500 tokens as a safer upper bound because prompt instructions and JSON formatting also use tokens.
+def batch_chunks_by_token_limit(
+    chunks: List[str],
+    max_tokens: int = 5500,
+    model_name: str = "gpt-4o-mini"
+) -> List[str]:
+    batched = []
+    current_batch = []
+    current_tokens = 0
+
+    for chunk in chunks:
+        chunk_tokens = count_tokens(chunk, model_name)
+
+        # If a single extracted chunk is already too large, split it further by paragraph.
+        # This adds robustness for unusually large source chunks.
+        if chunk_tokens > max_tokens:
+            paragraphs = chunk.split("\n")
+            temp_batch = []
+            temp_tokens = 0
+
+            for para in paragraphs:
+                para = para.strip()
+                if not para:
+                    continue
+
+                para_tokens = count_tokens(para, model_name)
+
+                if temp_batch and temp_tokens + para_tokens > max_tokens:
+                    batched.append("\n\n".join(temp_batch))
+                    temp_batch = [para]
+                    temp_tokens = para_tokens
+                else:
+                    temp_batch.append(para)
+                    temp_tokens += para_tokens
+
+            if temp_batch:
+                batched.append("\n\n".join(temp_batch))
+            continue
+
+        if current_batch and current_tokens + chunk_tokens > max_tokens:
+            batched.append("\n\n".join(current_batch))
+            current_batch = [chunk]
+            current_tokens = chunk_tokens
+        else:
+            current_batch.append(chunk)
+            current_tokens += chunk_tokens
+
+    if current_batch:
+        batched.append("\n\n".join(current_batch))
+
+    return batched
+
+# Merge multiple batch-level summary outputs into one final summary dictionary.
+# Since each batch is summarized independently, we need a post-processing step to combine them.
+def merge_summary_results(summary_results: List[dict]) -> dict:
+    merged = {
+        "service_introduction": [],
+        "user_rights": [],
+        "data_and_privacy": [],
+        "payment_and_refund": [],
+        "limitation_of_liability": [],
+        "dispute_resolution": [],
+        "other_important_terms": []
+    }
+
+    for result in summary_results:
+        for key in merged:
+            value = result.get(key, "").strip()
+
+            # Avoid adding duplicate text across batches.
+            if value and value not in merged[key]:
+                merged[key].append(value)
+
+    final_summary = {}
+    for key, values in merged.items():
+        if values:
+            final_summary[key] = "\n\n".join(values)
+        else:
+            final_summary[key] = "Not found in the provided text."
+
+    return final_summary
+
+
+# Remove duplicate risks collected from different batches while preserving their original order.
+def deduplicate_risks(risks: List[str]) -> List[str]:
+    deduped = []
+    seen = set()
+
+    for risk in risks:
+        risk_clean = risk.strip()
+        if risk_clean and risk_clean not in seen:
+            deduped.append(risk_clean)
+            seen.add(risk_clean)
+
+    return deduped
+
 
 def analyze_tos(chunks: List[str]) -> dict:
     """
-    Main LangChain agent pipeline function.
-    Takes a list of string chunks containing Terms of Service text.
-    Returns a unified JSON dictionary containing the summary and risk highlights.
+    Main LangChain pipeline function.
+
+    NEW FUNCTIONALITY ADDED:
+    - Instead of sending the entire ToS in one request, this version processes the text in token-limited batches.
+    - This solves the previous 413 'request body too large' error from GitHub Models.
+    - The function now merges batch-level summaries and deduplicates risk outputs before returning the final JSON.
     """
-    # 1. Initialize the LLM
-    # We are using the GitHub Models endpoint which uses the openai SDK
     github_token = os.getenv("GITHUB_TOKEN")
-    
+
     if not github_token:
-        return {"error": "GITHUB_TOKEN not found in environment variables. Please add it to your .env file."}
+        return {
+            "error": "GITHUB_TOKEN not found in environment variables. Please add it to your .env file."
+        }
 
     llm = ChatOpenAI(
         model="gpt-4o-mini",
         temperature=0,
-        api_key=github_token,
+        api_key=SecretStr(github_token),
         base_url="https://models.inference.ai.azure.com"
     )
 
-    # Convert string chunks to LangChain Document objects
-    docs = [Document(page_content=chunk) for chunk in chunks]
-    
-    # We will combine chunks by joining them. 
-    # For gpt-4o-mini, context window is 128k, so joining standard ToS chunks directly into one text usually fits.
-    full_text = "\n\n".join(chunk for chunk in chunks)
 
-    # 2. Setup the Summary Prompt (incorporating Zhuofu's design)
+    # Split the input into safe-size batches before sending requests to the model.
+    text_batches = batch_chunks_by_token_limit(
+        chunks=chunks,
+        max_tokens=5500,
+        model_name="gpt-4o-mini"
+    )
+
     summary_parser = JsonOutputParser(pydantic_object=SummaryOutput)
     summary_template = """
 You are a professional legal document analyst, skilled at transforming complex Terms of Service into clear, concise summaries.
@@ -61,9 +176,8 @@ The content to be summarized is:
 
 {format_instructions}
 
-The summary must be provided according to the actual text content and cannot be fabricated. If a certain part of the terms is not mentioned in the terms, explicitly state that it was not found or omit it.
-
-Add a disclaimer at the end of the final text generation (you don't need to add it to every field): "This summary is for understanding and reference only and does not constitute legal advice. If you have any questions, please consult a professional lawyer."
+The summary must be provided according to the actual text content and cannot be fabricated.
+If a certain part of the terms is not mentioned in this section, explicitly state "Not found in this section."
 """
     summary_prompt = PromptTemplate(
         template=summary_template,
@@ -71,7 +185,6 @@ Add a disclaimer at the end of the final text generation (you don't need to add 
         partial_variables={"format_instructions": summary_parser.get_format_instructions()}
     )
 
-    # 3. Setup the Risk Highlighting Prompt (Jiayi's specific task)
     risk_parser = JsonOutputParser(pydantic_object=RiskHighlightOutput)
     risk_template = """
 You are a consumer protection advocate specializing in analyzing Terms of Service and Privacy Policies.
@@ -94,21 +207,37 @@ Focus specifically on finding:
         partial_variables={"format_instructions": risk_parser.get_format_instructions()}
     )
 
-    # 4. Create the execution chains
     summary_chain = summary_prompt | llm | summary_parser
     risk_chain = risk_prompt | llm | risk_parser
 
-    # 5. Run the pipelines
-    try:
-        summary_result = summary_chain.invoke({"text": full_text})
-        risk_result = risk_chain.invoke({"text": full_text})
-    except Exception as e:
-        return {"error": f"Failed to process with LangChain: {str(e)}"}
+    partial_summaries = []
+    all_risks = []
 
-    # 6. Format output clearly for users (combinined into one JSON/Dict)
+    # Run the summary and risk extraction pipeline batch by batch.
+    # This is the main change that makes long documents processable.
+    for i, batch_text in enumerate(text_batches):
+        try:
+            print(
+                f"Processing batch {i + 1}/{len(text_batches)} "
+                f"({count_tokens(batch_text, 'gpt-4o-mini')} tokens)"
+            )
+
+            summary_result = summary_chain.invoke({"text": batch_text})
+            risk_result = risk_chain.invoke({"text": batch_text})
+
+            partial_summaries.append(summary_result)
+            all_risks.extend(risk_result.get("risks", []))
+
+        except Exception as e:
+            return {"error": f"Failed on batch {i + 1}: {str(e)}"}
+
+    # Merge all batch-level outputs into one final structured response.
+    merged_summary = merge_summary_results(partial_summaries)
+    deduped_risks = deduplicate_risks(all_risks)
+
     final_output = {
-        "summary": summary_result,
-        "risk_highlights": risk_result.get("risks", []),
+        "summary": merged_summary,
+        "risk_highlights": deduped_risks,
         "disclaimer": "This summary is for understanding and reference only and does not constitute legal advice. If you have any questions, please consult a professional lawyer."
     }
 
