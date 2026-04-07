@@ -101,6 +101,7 @@ def main():
     except:
         st.warning("Attempt failed - review error message below.")
         st.markdown(result)
+        st.button("Rerun")
     
 if __name__ == "__main__":
     main()
