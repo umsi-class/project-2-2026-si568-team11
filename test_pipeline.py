@@ -25,9 +25,7 @@ def main():
     print("\n2. Processing chunks through the LangChain pipeline (gpt-4o-mini)...")
     result = analyze_tos(chunks)
     
-    print("\n" + "="*50)
-    print("FINISHED ANALYSIS:")
-    print("="*50)
+    print("Finished Analysis:")
     
     # Pretty print the json output
     print(json.dumps(result, indent=2))
