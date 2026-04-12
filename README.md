@@ -11,20 +11,20 @@
 - Step-5: The final output is a clean JSON containing the combined summary, unique risks, and a disclaimer, with error handling for missing API keys or batch failures.
   
 **Web Interface using Streamlit**: 
-(Refer to 'streamlit_app.py' & streamlit_interface.py)
+(Refer to 'streamlit_app.py')
 - Step-1: Build a Streamlit web app that lets users upload a PDF or URL of Terms of Service and extracts text chunks from it.
 - Step-2: Send those chunks to the analyze_tos pipeline (LLM-based) to generate structured summaries and risk insights.
 - Step-3: The results are displayed in a clean UI with sections (rights, privacy, payments, etc.), along with error handling and a rerun option.
 
 **GenAI Use & Prompt Summary**:
-- Reference: https://docs.google.com/document/d/1yY6FB5KD646qOpsB_r3-uLaQhtLoYEksJ7qhC5-PhJg/edit?tab=t.0
+- [Reference](https://docs.google.com/document/d/1yY6FB5KD646qOpsB_r3-uLaQhtLoYEksJ7qhC5-PhJg/edit?tab=t.0)
 
 **Workflow with Code modules / files**:
 
 - Input Layer (User / Test Runner):
   Modules:
-    1. streamlit app file (UI upload + URL input)
-    2. test_pipeline.py / evaluation_runner (CLI testing)
+    1. streamlit app file (UI upload + URL input), adapted from test_pipeline.py 
+    2. evaluation_runner (CLI testing)
        
 - Data Extraction (extract_chunks) -> (PDF reading + web scraping + chunking)
   Module:
