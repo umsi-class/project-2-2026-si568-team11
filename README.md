@@ -53,16 +53,16 @@ Components:
     2. deduplicate_risks()
        
 - Output Generation
-    Modules:
+  Module:
     1. langchain_pipeline.py → returns final JSON
     2. streamlit app file → displays results
     3. test/evaluation scripts → save JSON output
        
 - Evaluation & Validation Layer
-    Module:
+  Module:
     1. evaluation script (output_quality_checks.py)
     2. evaluation_runner / test file
-    Functions:
+  Functions:
     1. check_output_structure()
     2. check_summary_accuracy()
     3. check_risk_highlight_usefulness()
