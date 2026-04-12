@@ -1,6 +1,6 @@
 ## First test ##
 
-date: Aprial 1
+date: April 1
 
 Action: run the test_pipeline.py
 result:
@@ -20,10 +20,10 @@ suggestion: modifying the `langchain_pipeline.py` file to add the following func
 
 ## Second test ##
 
-date: Aprial 12
+date: April 12
 
-Action: run evvaluation_runner.py and output_quality_evalution.py
+Action: run evaluation_runner.py and output_quality_evalution.py
 result: The code runs normally.
-    summary total score: 19/21
-    risk highlightscore: 27/27
-    Both features scored above 90%, indicating good performance, and no modification to the prompts is required.
+    - summary total score: 19/21
+    - risk highlightscore: 27/27
+    - Both features scored above 90%, indicating good performance, and no modification to the prompts is required.
