@@ -34,6 +34,7 @@ def extract_chunks(input_url, pdf=None):
             url_text = '\n'.join(p.get_text() for p in paragraphs if p.get_text().strip())
         except Exception as e:
             print(f"URL Extract Error: {e}")
+            st.error("URL failed! Make sure your site allows scraping.")
             pass
 
     current_text = ""
@@ -49,7 +50,7 @@ def extract_chunks(input_url, pdf=None):
         current_text = url_text
         # store_name = input_url.replace("https://", "").replace("http://", "").replace("/", "_")
     else:
-        # TODO: display a message on interface to ask user to upload valid PDF/URL
+        st.error("Please upload a valid PDF/URL.")
         return []
 
     # Split text into chunks specifically for langchain
