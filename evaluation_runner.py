@@ -22,8 +22,16 @@ TEST_FILES = [
 
 def check_output_structure(result):
     """
-    Check whether the final output has the expected structure.
-    Returns a list of issues. If empty, structure is valid.
+    Validate the structure of the LLM output against expected schema.
+    Args: 
+        result (dict): Output generated from the ToS analysis pipeline.
+        
+    Returns:
+        list: A list of issues found in the structure. Empty, if valid.
+
+    Checks:
+        Check whether the final output has the expected structure.
+    
     """
     issues = []
 
@@ -50,7 +58,23 @@ def check_output_structure(result):
 
 def evaluate_pdf(pdf_path):
     """
-    Run extraction + analysis for one PDF file.
+    Execute and E2E evaluation for single PDF file.
+
+    Workflow:
+        1. Validate the existence of the file.
+        2. Extract text chunks from PDF.
+        3. Run Langchain based ToS analysis
+        4. Validate output structure
+        5. Save results to a JSON file.
+
+    Args:
+        pdf_path (str): Path to the PDF file to evaluate.
+
+    Returns:
+        dict or None:
+        Summary includes:
+            - file (str), num_chunks (int), num_risks (int), structure_passed (bool), issues (list)
+            - None, if evaluation fails at any stage.    
     """
     print(f"Evaluating file: {pdf_path}")
 
@@ -114,6 +138,15 @@ def evaluate_pdf(pdf_path):
 
 
 def main():
+    """
+    Run evaluation across all test PDF files
+
+    Iterates through predefined test files, evaluates, aggregates, prints a summary and saves the
+    output to 'evaluation_summary.json'.
+
+    Returns: None
+    """
+    
     all_results = []
 
     for pdf_path in TEST_FILES:
