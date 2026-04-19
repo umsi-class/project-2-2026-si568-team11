@@ -1,6 +1,6 @@
 ## First test ##
 
-date: April 1
+Date: April 1
 
 Action: run the test_pipeline.py
 
@@ -14,7 +14,7 @@ Action: Try using other models to avoid input limitations.
 
 Result: Same as above, indicating that all models on GitHub Models are limited to 8000 tokens.
 
-Suggestion: modifying the `langchain_pipeline.py` file to add the following functionality:
+Suggestion: Modify the `langchain_pipeline.py` file to to implement chunking and batching:
     Split the entire chunks into 6500-token chunks, ensuring each chunk's input is less than 8000.
     Summarize each chunk separately, and finally merge all results.
     This way, the output will be complete without exceeding the limit.
@@ -22,12 +22,12 @@ Suggestion: modifying the `langchain_pipeline.py` file to add the following func
 
 ## Second test ##
 
-date: April 12
+Date: April 12
 
-Action: run evaluation_runner.py and output_quality_evalution.py
+Action: Ran evaluation_runner.py and output_quality_evalution.py
 
-Result: The code runs normally.
+Result: The code executed successfully.
 
-- summary total score: 19/21
-- risk highlightscore: 27/27
-- Both features scored above 90%, indicating good performance, and no modification to the prompts is required.
+- Summary score (total): 19/21
+- Risk highlight score: 27/27
+- Both features scored above 90%, indicating good performance, and no prompt modification required.
